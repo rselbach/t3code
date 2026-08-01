@@ -28,6 +28,7 @@ import {
   ServerCliPublishIconSourceMissingError,
   ServerCliPublishIconTargetMissingError,
 } from "./cliErrors.ts";
+import { copyRequiredBuildAsset } from "./cliBuildAssets.ts";
 
 interface PackageJson {
   name: string;
@@ -161,6 +162,10 @@ const buildCmd = Command.make(
           shell: false,
         }),
       );
+      yield* copyRequiredBuildAsset(
+        path.join(serverDir, "src/provider/assets/pi/t3-approvals.ts"),
+        path.join(serverDir, "dist/assets/pi/t3-approvals.ts"),
+      );
 
       const webDist = path.join(repoRoot, "apps/web/dist");
       const clientTarget = path.join(serverDir, "dist/client");
@@ -227,6 +232,7 @@ const publishCmd = Command.make(
         "dist/bin.mjs",
         "dist/service-launcher.mjs",
         "dist/client/index.html",
+        "dist/assets/pi/t3-approvals.ts",
       ]) {
         const abs = path.join(serverDir, relPath);
         if (!(yield* fs.exists(abs))) {
