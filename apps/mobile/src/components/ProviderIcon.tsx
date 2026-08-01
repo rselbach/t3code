@@ -10,6 +10,23 @@ export function ProviderIcon(props: ProviderIconProps) {
   const isDarkMode = useColorScheme() === "dark";
   const size = props.size ?? 16;
 
+  if (props.provider === "pi") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Path
+          fill={isDarkMode ? "#fff" : "#000"}
+          d="M160 0h480c88.366 0 160 71.634 160 160v480c0 88.366-71.634 160-160 160H160C71.634 800 0 728.366 0 640V160C0 71.634 71.634 0 160 0Z"
+        />
+        <Path
+          fill={isDarkMode ? "#000" : "#fff"}
+          fillRule="evenodd"
+          d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
+        />
+        <Path fill={isDarkMode ? "#000" : "#fff"} d="M517.36 400H634.72V634.72H517.36Z" />
+      </Svg>
+    );
+  }
+
   if (props.provider === "claudeAgent") {
     return (
       <Svg width={size} height={size} viewBox="0 0 256 257" fill="none">

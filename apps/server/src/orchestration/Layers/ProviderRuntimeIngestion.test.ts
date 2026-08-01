@@ -2299,6 +2299,111 @@ describe("ProviderRuntimeIngestion", () => {
     ).toBe(" after approval");
   });
 
+  it("starts a new streaming assistant message segment after a tool starts", async () => {
+    const harness = await createHarness({ serverSettings: { enableAssistantStreaming: true } });
+    const startedAt = "2026-03-28T08:00:00.000Z";
+    const toolAt = "2026-03-28T08:00:01.000Z";
+    const resumedAt = "2026-03-28T08:00:02.000Z";
+    const completedAt = "2026-03-28T08:00:03.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-streaming-tool-segment"),
+      provider: ProviderDriverKind.make("pi"),
+      createdAt: startedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-streaming-tool-segment"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" &&
+        thread.session?.activeTurnId === "turn-streaming-tool-segment",
+    );
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-message-delta-streaming-tool-segment-initial"),
+      provider: ProviderDriverKind.make("pi"),
+      createdAt: startedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-streaming-tool-segment"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "before tools",
+      },
+    });
+    harness.emit({
+      type: "item.started",
+      eventId: asEventId("evt-tool-started-streaming-tool-segment"),
+      provider: ProviderDriverKind.make("pi"),
+      createdAt: toolAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-streaming-tool-segment"),
+      itemId: asItemId("tool-1"),
+      payload: {
+        itemType: "command_execution",
+        status: "inProgress",
+        title: "bash",
+        detail: "ls",
+      },
+    });
+
+    await waitForThread(harness.readModel, (entry) =>
+      entry.messages.some(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:turn-streaming-tool-segment" &&
+          !message.streaming &&
+          message.text === "before tools",
+      ),
+    );
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-message-delta-streaming-tool-segment-followup"),
+      provider: ProviderDriverKind.make("pi"),
+      createdAt: resumedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-streaming-tool-segment"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: " after tools",
+      },
+    });
+    harness.emit({
+      type: "turn.completed",
+      eventId: asEventId("evt-turn-completed-streaming-tool-segment"),
+      provider: ProviderDriverKind.make("pi"),
+      createdAt: completedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-streaming-tool-segment"),
+      payload: {
+        state: "completed",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.messages.some(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:turn-streaming-tool-segment:segment:1" &&
+          !message.streaming &&
+          message.text === " after tools",
+      ),
+    );
+    expect(
+      thread.messages.find(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:turn-streaming-tool-segment",
+      )?.text,
+    ).toBe("before tools");
+    expect(
+      thread.messages.find(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:turn-streaming-tool-segment:segment:1",
+      )?.text,
+    ).toBe(" after tools");
+  });
+
   it("streams assistant deltas when thread.turn.start requests streaming mode", async () => {
     const harness = await createHarness({ serverSettings: { enableAssistantStreaming: true } });
     const now = "2026-01-01T00:00:00.000Z";

@@ -6,6 +6,7 @@ import {
   ClientSettingsSchema,
   ClientSettingsPatch,
   DEFAULT_SERVER_SETTINGS,
+  PiSettings,
   ServerSettings,
   ServerSettingsPatch,
 } from "./settings.ts";
@@ -14,7 +15,26 @@ const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const decodeClientSettingsPatch = Schema.decodeUnknownSync(ClientSettingsPatch);
 const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
 const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+const decodePiSettings = Schema.decodeUnknownSync(PiSettings);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
+
+describe("PiSettings", () => {
+  it("accepts provider-scoped custom model slugs", () => {
+    expect(decodePiSettings({ customModels: ["openrouter/openai/gpt-5"] }).customModels).toEqual([
+      "openrouter/openai/gpt-5",
+    ]);
+  });
+
+  it.each(["gpt-5", "/gpt-5", "openai/", "open ai/gpt-5"])(
+    "rejects an invalid custom model slug: %s",
+    (model) => {
+      expect(() => decodePiSettings({ customModels: [model] })).toThrow();
+      expect(() =>
+        decodeServerSettingsPatch({ providers: { pi: { customModels: [model] } } }),
+      ).toThrow();
+    },
+  );
+});
 
 describe("ClientSettings word wrap", () => {
   it("defaults word wrap on", () => {
