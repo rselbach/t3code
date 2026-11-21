@@ -21,7 +21,9 @@ import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStr
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   antigravityUserSkillDirectories,
+  readEnabledAntigravityUserPlugins,
   resolveAntigravityUserHome,
+  resolveManagedAntigravityUserPluginLinkTarget,
 } from "./Drivers/AntigravitySkills.ts";
 
 export const ANTIGRAVITY_AUTH_STDOUT_PREFIX =
@@ -332,6 +334,72 @@ const linkAntigravityUserConfig = Effect.fn("linkAntigravityUserConfig")(functio
   }
 });
 
+const linkAntigravityUserPlugins = Effect.fn("linkAntigravityUserPlugins")(function* (input: {
+  readonly profileDirectory: string;
+  readonly userHome: string;
+  readonly platform: NodeJS.Platform;
+}): Effect.fn.Return<void, never, FileSystem.FileSystem | Path.Path> {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const userPlugins = path.resolve(input.userHome, ".gemini", "config", "plugins");
+  const profilePlugins = path.resolve(input.profileDirectory, "config", "plugins");
+  const enabled = yield* readEnabledAntigravityUserPlugins(input.userHome).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Antigravity user plugins could not be read.", {
+        userPlugins,
+        error,
+      }).pipe(Effect.as(undefined)),
+    ),
+  );
+  if (enabled === undefined) return;
+  const existing = yield* fs.readDirectory(profilePlugins).pipe(
+    Effect.map((entries) => new Set(entries)),
+    Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed(new Set<string>())),
+    Effect.catch((error) =>
+      Effect.logWarning("Antigravity profile plugins could not be read.", {
+        profilePlugins,
+        error,
+      }).pipe(Effect.as(undefined)),
+    ),
+  );
+  if (existing === undefined) return;
+  for (const name of existing) {
+    const link = path.join(profilePlugins, name);
+    yield* Effect.gen(function* () {
+      const target = yield* resolveManagedAntigravityUserPluginLinkTarget(link, userPlugins);
+      if (target === undefined || enabled.get(name) === target) return;
+      yield* fs.remove(link);
+      existing.delete(name);
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Stale Antigravity user plugin link could not be removed.", {
+          link,
+          error,
+        }),
+      ),
+    );
+  }
+  for (const [name, target] of enabled) {
+    if (existing.has(name)) continue;
+    const link = path.join(profilePlugins, name);
+    yield* Effect.gen(function* () {
+      yield* fs.makeDirectory(profilePlugins, { recursive: true });
+      yield* Effect.tryPromise({
+        try: () => NodeFSP.symlink(target, link, input.platform === "win32" ? "junction" : "dir"),
+        catch: (cause) => new AntigravitySkillLinkError({ link, cause }),
+      });
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Antigravity user plugin is not linked into the profile.", {
+          link,
+          target,
+          error,
+        }),
+      ),
+    );
+  }
+});
+
 const RuleCopiesJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.String));
 const decodeRuleCopies = Schema.decodeUnknownOption(RuleCopiesJson);
 const encodeRuleCopies = Schema.encodeSync(RuleCopiesJson);
@@ -540,6 +608,7 @@ export const prepareAntigravityProfile = Effect.fn("prepareAntigravityProfile")(
   if (platform === "win32") {
     yield* copyAntigravityUserConfigFiles({ profileDirectory: geminiHome, userHome });
   }
+  yield* linkAntigravityUserPlugins({ profileDirectory: geminiHome, userHome, platform });
   return profile;
 });
 

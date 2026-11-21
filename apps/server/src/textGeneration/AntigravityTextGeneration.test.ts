@@ -70,6 +70,7 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
   const path = yield* Path.Path;
   const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-test-" });
   const profileDirectory = path.join(root, "profile");
+  const userHome = path.join(root, "home");
   const projectDirectory = path.join(root, "project");
   const conversations = path.join(profileDirectory, "antigravity-acp", "conversations");
   const nativeSessionId = options.sessionId ?? SESSION_ID;
@@ -292,6 +293,7 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
 
   const textGeneration = yield* makeAntigravityTextGeneration({
     profileDirectory,
+    userHome,
     makeRuntime,
     withProcess,
   });
@@ -314,6 +316,7 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
     fs,
     path,
     profileDirectory,
+    userHome,
     projectDirectory,
     sessionBase,
     brainDirectory,
@@ -627,7 +630,12 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
       const configDirectory = fixture.path.join(fixture.profileDirectory, "config");
       yield* fixture.fs.makeDirectory(configDirectory, { recursive: true });
       yield* fixture.fs.writeFileString(fixture.path.join(configDirectory, name), value);
-      expect(yield* isAntigravityTextGenerationAvailable(fixture.profileDirectory)).toBe(available);
+      expect(
+        yield* isAntigravityTextGenerationAvailable({
+          profileDirectory: fixture.profileDirectory,
+          userHome: fixture.userHome,
+        }),
+      ).toBe(available);
       const result = yield* fixture.textGeneration
         .generateThreadTitle(fixture.titleInput)
         .pipe(Effect.exit);
@@ -635,6 +643,107 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
       expect(fixture.state.workspaces.length).toBe(available ? 1 : 0);
       yield* fixture.assertCleaned;
     }),
+  );
+
+  it.effect.each([
+    {
+      label: "enabled user plugin with hooks.json",
+      scope: "user" as const,
+      file: { name: "hooks.json", value: '{"default":{"SessionStart":[{"command":"echo hi"}]}}' },
+      available: false,
+    },
+    {
+      label: "enabled user plugin with mcp_config.json",
+      scope: "user" as const,
+      file: { name: "mcp_config.json", value: '{"mcpServers":{"srv":{"command":"echo"}}}' },
+      available: false,
+    },
+    {
+      label: "enabled user skills-only plugin",
+      scope: "user" as const,
+      available: true,
+    },
+    {
+      label: "user-disabled plugin with hooks.json",
+      scope: "user" as const,
+      file: { name: "hooks.json", value: '{"default":{"SessionStart":[{"command":"echo hi"}]}}' },
+      userDisabled: true,
+      available: true,
+    },
+    {
+      label: "default-disabled plugin with hooks.json",
+      scope: "user" as const,
+      file: { name: "hooks.json", value: '{"default":{"SessionStart":[{"command":"echo hi"}]}}' },
+      manifestDisabled: true,
+      available: true,
+    },
+    {
+      label: "profile-disabled user plugin with hooks.json",
+      scope: "user" as const,
+      file: { name: "hooks.json", value: '{"default":{"SessionStart":[{"command":"echo hi"}]}}' },
+      profileDisabled: true,
+      available: true,
+    },
+    {
+      label: "enabled user plugin with invalid hooks.json",
+      scope: "user" as const,
+      file: { name: "hooks.json", value: "invalid JSON" },
+      available: false,
+    },
+    {
+      label: "profile-local plugin with hooks.json",
+      scope: "profile" as const,
+      file: { name: "hooks.json", value: '{"default":{"SessionStart":[{"command":"echo hi"}]}}' },
+      available: false,
+    },
+  ])(
+    "checks plugin startup configuration for $label, available=$available",
+    ({ scope, file, userDisabled, manifestDisabled, profileDisabled, available }) =>
+      Effect.gen(function* () {
+        const fixture = yield* makeFixture();
+        const pluginDirectory =
+          scope === "user"
+            ? fixture.path.join(fixture.userHome, ".gemini", "config", "plugins", "demo")
+            : fixture.path.join(fixture.profileDirectory, "config", "plugins", "demo");
+        yield* fixture.fs.makeDirectory(pluginDirectory, { recursive: true });
+        yield* fixture.fs.writeFileString(
+          fixture.path.join(pluginDirectory, "plugin.json"),
+          JSON.stringify({ name: "demo", ...(manifestDisabled ? { disabled: true } : {}) }),
+        );
+        if (file) {
+          yield* fixture.fs.writeFileString(
+            fixture.path.join(pluginDirectory, file.name),
+            file.value,
+          );
+        }
+        if (userDisabled) {
+          yield* fixture.fs.writeFileString(
+            fixture.path.join(fixture.userHome, ".gemini", "config", "config.json"),
+            JSON.stringify({ plugins: { demo: { enabled: false } } }),
+          );
+        }
+        if (profileDisabled) {
+          yield* fixture.fs.makeDirectory(fixture.path.join(fixture.profileDirectory, "config"), {
+            recursive: true,
+          });
+          yield* fixture.fs.writeFileString(
+            fixture.path.join(fixture.profileDirectory, "config", "config.json"),
+            JSON.stringify({ plugins: { demo: { enabled: false } } }),
+          );
+        }
+        expect(
+          yield* isAntigravityTextGenerationAvailable({
+            profileDirectory: fixture.profileDirectory,
+            userHome: fixture.userHome,
+          }),
+        ).toBe(available);
+        const result = yield* fixture.textGeneration
+          .generateThreadTitle(fixture.titleInput)
+          .pipe(Effect.exit);
+        expect(Exit.isSuccess(result)).toBe(available);
+        expect(fixture.state.workspaces.length).toBe(available ? 1 : 0);
+        yield* fixture.assertCleaned;
+      }),
   );
 
   it.effect("does not launch during sign-out or before sign-in", () =>

@@ -180,9 +180,20 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
         relativePath: "plugin.json",
         contents: '{"name":"shadowed"}',
       });
+      yield* writePlugin(userPlugins, "blocked-by-file", "ignored-blocked-by-file", {
+        relativePath: "plugin.json",
+        contents: '{"name":"blocked-by-file"}',
+      });
+      yield* fileSystem.writeFileString(path.join(profilePlugins, "blocked-by-file"), "not a dir");
       yield* fileSystem.writeFileString(
         path.join(workspace.userHome, ".gemini", "config", "config.json"),
-        JSON.stringify({ plugins: { "user-disabled": { enabled: false } } }),
+        JSON.stringify({
+          plugins: {
+            broken: null,
+            "user-disabled": { enabled: false },
+            "default-disabled": { enabled: true },
+          },
+        }),
       );
       yield* fileSystem.makeDirectory(path.join(profileDirectory, "config"), { recursive: true });
       yield* fileSystem.writeFileString(

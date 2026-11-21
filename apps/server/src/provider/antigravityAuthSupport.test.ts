@@ -724,6 +724,18 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
           JSON.stringify({ plugins: { off: { enabled: false } } }),
         );
         yield* fs.makeDirectory(path.join(profilePlugins, "profile-own"), { recursive: true });
+        yield* fs.writeFileString(path.join(profilePlugins, "keep-file"), "x");
+        const prefixCollision = path.join(userHome, ".gemini", "config", "plugins-other", "prefix");
+        yield* fs.makeDirectory(prefixCollision, { recursive: true });
+        yield* fs.symlink(prefixCollision, path.join(profilePlugins, "prefix"));
+        yield* fs.symlink(
+          path.join(temporaryDirectory, "missing-external"),
+          path.join(profilePlugins, "dangling-external"),
+        );
+        yield* fs.symlink(
+          path.relative(profilePlugins, path.join(userPlugins, "stale-relative")),
+          path.join(profilePlugins, "stale-relative"),
+        );
         yield* fs.makeDirectory(externalTarget, { recursive: true });
         yield* fs.symlink(externalTarget, path.join(profilePlugins, "external"));
 
@@ -737,7 +749,13 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
         expect(yield* fs.exists(path.join(profilePlugins, "off"))).toBe(false);
         expect(yield* fs.exists(path.join(profilePlugins, "default-off"))).toBe(false);
         expect(yield* fs.exists(path.join(profilePlugins, "no-manifest"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "stale-relative"))).toBe(false);
         expect(yield* fs.exists(path.join(profilePlugins, "profile-own"))).toBe(true);
+        expect(yield* fs.exists(path.join(profilePlugins, "keep-file"))).toBe(true);
+        expect(yield* fs.readLink(path.join(profilePlugins, "prefix"))).toBe(prefixCollision);
+        expect(yield* fs.readLink(path.join(profilePlugins, "dangling-external"))).toBe(
+          path.join(temporaryDirectory, "missing-external"),
+        );
         expect(yield* fs.readLink(path.join(profilePlugins, "external"))).toBe(externalTarget);
 
         yield* fs.writeFileString(

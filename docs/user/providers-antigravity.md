@@ -107,6 +107,12 @@ on its own; to share a folder like that one, list it in `~/.gemini/config/skills
 (or a project's `.agents/skills.json`), and T3 Code shows the skills it declares,
 honoring `inherits`, `include_only`, and `exclude`.
 
+Enabled plugins installed in `~/.gemini/config/plugins` are linked into each Antigravity
+instance profile, so their skills appear in the skill picker and their tools and hooks load
+in threads. Plugins disabled in `~/.gemini/config/config.json` or shipping `"disabled": true`
+in `plugin.json` are not linked. When an enabled plugin configures hooks or MCP servers,
+select another system model for background text generation such as thread titles.
+
 Antigravity receives images and audio directly, and reads PDFs and text files as
 documents. Other attachments, including videos, are passed as a saved file path for
 the agent to inspect with its tools.

@@ -41,9 +41,7 @@ environment. The 1.5 CLI keeps every profile's sign-in in one OS keyring entry a
 `AGY_ACP_FORCE_FILE_STORAGE`; only its SSH-session check stores the sign-in in the profile, so Google
 account instances launch with `SSH_CONNECTION` set and sign in with `--login`. Gemini Enterprise
 has no such sign-in and still shares the keyring entry. The launch environment removes ambient Google credentials,
-so an instance cannot silently use another account or billing project. The agent also resolves
-its user-global skill directories under that profile, so the profile links those two directories
-back to the user's real `~/.gemini`; MCP servers, hooks, and rules there stay out of the profile.
+so an instance cannot silently use another account or billing project. The agent also resolves its user-global skills, rules, and plugins under that profile, so the profile links global skill directories, rule files, `skills.json`, and each enabled plugin from `~/.gemini/config/plugins` back to the user's real `~/.gemini`; top-level `~/.gemini/config/mcp_config.json` and `hooks.json` stay out of the profile.
 See [profile isolation](../../apps/server/src/provider/antigravityAuthSupport.ts).
 
 The [Antigravity installer](../../apps/server/src/provider/AntigravityInstallation.ts) outlives
@@ -75,9 +73,10 @@ Antigravity sign-out closes admission to new processes and stops existing proces
 metadata. Otherwise a helper or resumed session could retain the old account. Cached model lists
 do not establish current access, and an authoritative empty catalog must clear the old list.
 
-Antigravity text-generation helpers deny tool requests, but native hooks and MCP configuration can
-run before the prompt. They reject profiles with such configuration before launch. Prompt
-instructions and tool denial do not create a native sandbox.
+Antigravity text-generation helpers deny tool requests, but native global and plugin hooks and MCP
+configuration can run before the prompt. They reject profiles with such configuration in
+`<profile>/config` or at the root of any enabled plugin before launch. Prompt instructions and tool
+denial do not create a native sandbox.
 See [helper constraints](../../apps/server/src/textGeneration/AntigravityTextGeneration.ts).
 
 ## Provider updates run only through the owning installer
