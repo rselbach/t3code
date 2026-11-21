@@ -121,6 +121,90 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
     }),
   );
 
+  it.effect("reads skills from enabled user plugins before the profile links them", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const workspace = yield* makeWorkspace();
+      const profileDirectory = path.join(workspace.userHome, "t3", "providers", "antigravity", "p");
+      const userPlugins = path.join(workspace.userHome, ".gemini", "config", "plugins");
+      const profilePlugins = path.join(profileDirectory, "config", "plugins");
+      const writePlugin = (
+        root: string,
+        name: string,
+        skillName: string,
+        manifest?: { readonly relativePath: string; readonly contents: string },
+      ) =>
+        Effect.gen(function* () {
+          yield* writeSkill(
+            path.join(root, name, "skills", skillName),
+            `---\nname: ${skillName}\n---\n`,
+          );
+          if (manifest) {
+            const manifestPath = path.join(root, name, manifest.relativePath);
+            yield* fileSystem.makeDirectory(path.dirname(manifestPath), { recursive: true });
+            yield* fileSystem.writeFileString(manifestPath, manifest.contents);
+          }
+        });
+
+      yield* writePlugin(userPlugins, "root-manifest", "root-skill", {
+        relativePath: "plugin.json",
+        contents: '{"name":"root-manifest"}',
+      });
+      yield* writePlugin(userPlugins, "ag-manifest", "ag-skill", {
+        relativePath: path.join(".antigravity-plugin", "plugin.json"),
+        contents: '{"name":"ag-manifest"}',
+      });
+      yield* writePlugin(userPlugins, "gem-manifest", "gem-skill", {
+        relativePath: path.join(".gemini-plugin", "plugin.json"),
+        contents: '{"name":"gem-manifest"}',
+      });
+      yield* writePlugin(userPlugins, "no-manifest", "ignored-no-manifest");
+      yield* writePlugin(userPlugins, "user-disabled", "ignored-user-disabled", {
+        relativePath: "plugin.json",
+        contents: '{"name":"user-disabled"}',
+      });
+      yield* writePlugin(userPlugins, "default-disabled", "ignored-default-disabled", {
+        relativePath: "plugin.json",
+        contents: '{"name":"default-disabled","disabled":true}',
+      });
+      yield* writePlugin(userPlugins, "profile-disabled", "ignored-profile-disabled", {
+        relativePath: "plugin.json",
+        contents: '{"name":"profile-disabled"}',
+      });
+      yield* writePlugin(userPlugins, "shadowed", "user-shadowed", {
+        relativePath: "plugin.json",
+        contents: '{"name":"shadowed"}',
+      });
+      yield* writePlugin(profilePlugins, "shadowed", "profile-shadowed", {
+        relativePath: "plugin.json",
+        contents: '{"name":"shadowed"}',
+      });
+      yield* fileSystem.writeFileString(
+        path.join(workspace.userHome, ".gemini", "config", "config.json"),
+        JSON.stringify({ plugins: { "user-disabled": { enabled: false } } }),
+      );
+      yield* fileSystem.makeDirectory(path.join(profileDirectory, "config"), { recursive: true });
+      yield* fileSystem.writeFileString(
+        path.join(profileDirectory, "config", "config.json"),
+        JSON.stringify({ plugins: { "profile-disabled": { enabled: false } } }),
+      );
+
+      assert.deepEqual(
+        (yield* discoverAntigravitySkills({ ...workspace, profileDirectory })).map((skill) => [
+          skill.name,
+          skill.scope,
+        ]),
+        [
+          ["ag-skill", "user"],
+          ["gem-skill", "user"],
+          ["profile-shadowed", "user"],
+          ["root-skill", "user"],
+        ],
+      );
+    }),
+  );
+
   it.effect("uses native root order for duplicate names", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

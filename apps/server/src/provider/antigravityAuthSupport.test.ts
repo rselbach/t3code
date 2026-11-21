@@ -690,6 +690,70 @@ it.layer(NodeServices.layer)("Antigravity profile preparation", (it) => {
   );
 
   it.effect.skipIf(!symlinksSupported)(
+    "links each enabled user plugin and removes only its own stale links",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const temporaryDirectory = yield* fs.makeTempDirectoryScoped();
+        const userHome = path.join(temporaryDirectory, "home");
+        const profileDirectory = path.join(temporaryDirectory, "profile");
+        const userPlugins = path.join(userHome, ".gemini", "config", "plugins");
+        const profilePlugins = path.join(profileDirectory, "config", "plugins");
+        const externalTarget = path.join(temporaryDirectory, "external-plugin");
+        const writeManifest = (directory: string, relativePath: string, contents: string) =>
+          fs
+            .makeDirectory(path.dirname(path.join(directory, relativePath)), { recursive: true })
+            .pipe(Effect.andThen(fs.writeFileString(path.join(directory, relativePath), contents)));
+
+        yield* writeManifest(path.join(userPlugins, "on"), "plugin.json", '{"name":"on"}');
+        yield* writeManifest(
+          path.join(userPlugins, "ag"),
+          path.join(".antigravity-plugin", "plugin.json"),
+          '{"name":"ag"}',
+        );
+        yield* writeManifest(path.join(userPlugins, "off"), "plugin.json", '{"name":"off"}');
+        yield* writeManifest(
+          path.join(userPlugins, "default-off"),
+          "plugin.json",
+          '{"name":"default-off","disabled":true}',
+        );
+        yield* fs.makeDirectory(path.join(userPlugins, "no-manifest"), { recursive: true });
+        yield* fs.writeFileString(
+          path.join(userHome, ".gemini", "config", "config.json"),
+          JSON.stringify({ plugins: { off: { enabled: false } } }),
+        );
+        yield* fs.makeDirectory(path.join(profilePlugins, "profile-own"), { recursive: true });
+        yield* fs.makeDirectory(externalTarget, { recursive: true });
+        yield* fs.symlink(externalTarget, path.join(profilePlugins, "external"));
+
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        expect(yield* fs.readLink(path.join(profilePlugins, "on"))).toBe(
+          path.join(userPlugins, "on"),
+        );
+        expect(yield* fs.readLink(path.join(profilePlugins, "ag"))).toBe(
+          path.join(userPlugins, "ag"),
+        );
+        expect(yield* fs.exists(path.join(profilePlugins, "off"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "default-off"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "no-manifest"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "profile-own"))).toBe(true);
+        expect(yield* fs.readLink(path.join(profilePlugins, "external"))).toBe(externalTarget);
+
+        yield* fs.writeFileString(
+          path.join(userHome, ".gemini", "config", "config.json"),
+          JSON.stringify({ plugins: { on: { enabled: false }, off: { enabled: false } } }),
+        );
+        yield* fs.remove(path.join(userPlugins, "ag"), { recursive: true });
+        yield* prepareAntigravityProfile({ profileDirectory, userHome });
+        expect(yield* fs.exists(path.join(profilePlugins, "on"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "ag"))).toBe(false);
+        expect(yield* fs.exists(path.join(profilePlugins, "profile-own"))).toBe(true);
+        expect(yield* fs.readLink(path.join(profilePlugins, "external"))).toBe(externalTarget);
+      }),
+  );
+
+  it.effect.skipIf(!symlinksSupported)(
     "links the user's global rule files and never replaces the profile's own",
     () =>
       Effect.gen(function* () {
