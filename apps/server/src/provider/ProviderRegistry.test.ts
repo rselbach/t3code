@@ -1086,27 +1086,29 @@ it.layer(
         models: [machineModel, addedModel],
       });
       assert.deepStrictEqual(
-        changed.workspaceSnapshots?.map(({ cwd, models, modelsPending }) => ({
+        changed.workspaceSnapshots?.map(({ cwd, models, modelsPending, slashCommandsPending }) => ({
           cwd,
           models,
           modelsPending,
+          slashCommandsPending,
         })),
         [
-          { cwd: "/project", models: [machineModel, projectModel], modelsPending: true },
+          {
+            cwd: "/project",
+            models: [machineModel, projectModel],
+            modelsPending: true,
+            slashCommandsPending: undefined,
+          },
           // Its folder may define a model the machine catalog just dropped.
-          { cwd: "/plain", models: undefined, modelsPending: true },
+          {
+            cwd: "/plain",
+            models: undefined,
+            modelsPending: true,
+            slashCommandsPending: undefined,
+          },
         ],
       );
-    });
 
-    it("marks folder slash commands pending when a machine refresh changes machine slashCommands", () => {
-      const machineModel = {
-        slug: "opencode/big-pickle",
-        name: "Big Pickle",
-        isCustom: false,
-        capabilities: null,
-      } satisfies ServerProvider["models"][number];
-      const addedModel = { ...machineModel, slug: "opencode/new", name: "New" };
       const initialCommands = [
         { name: "plan", description: "Plan work" },
       ] satisfies ServerProvider["slashCommands"];
@@ -1114,66 +1116,26 @@ it.layer(
         { name: "plan", description: "Plan work" },
         { name: "review", description: "Review diff" },
       ] satisfies ServerProvider["slashCommands"];
-      const provider = {
-        instanceId: ProviderInstanceId.make("opencode"),
-        driver: ProviderDriverKind.make("opencode"),
-        status: "ready",
-        enabled: true,
-        installed: true,
-        auth: { status: "authenticated" },
-        checkedAt: "2026-03-25T00:00:00.000Z",
-        version: "2.0.0",
-        models: [machineModel],
-        slashCommands: initialCommands,
-        skills: [],
-      } satisfies ServerProvider;
-      const withWorkspace = ProviderRegistry.upsertProviderWorkspaceSnapshot(provider, "/project", {
-        ...provider,
-        slashCommands: initialCommands,
-        slashCommandsPending: false,
-      });
-
-      const unchanged = ProviderRegistry.mergeProviderSnapshot(withWorkspace, {
-        ...provider,
-        slashCommands: [{ name: "plan", description: "Plan work" }],
-      });
-      assert.strictEqual(unchanged.workspaceSnapshots?.[0]?.slashCommandsPending, undefined);
-      assert.strictEqual(unchanged.workspaceSnapshots?.[0]?.modelsPending, undefined);
-
-      const retainedOpenCode = ProviderRegistry.mergeProviderSnapshot(withWorkspace, {
-        ...provider,
-        status: "warning",
-        slashCommands: [],
-      });
-      assert.deepStrictEqual(retainedOpenCode.slashCommands, initialCommands);
-      assert.strictEqual(retainedOpenCode.workspaceSnapshots?.[0]?.slashCommandsPending, undefined);
-      assert.strictEqual(retainedOpenCode.workspaceSnapshots?.[0]?.modelsPending, undefined);
-
-      const commandsChanged = ProviderRegistry.mergeProviderSnapshot(withWorkspace, {
+      const withCommands = ProviderRegistry.upsertProviderWorkspaceSnapshot(
+        { ...provider, slashCommands: initialCommands },
+        "/project",
+        { ...provider, slashCommands: initialCommands, slashCommandsPending: false },
+      );
+      assert.strictEqual(
+        ProviderRegistry.mergeProviderSnapshot(withCommands, {
+          ...provider,
+          status: "warning",
+          slashCommands: [],
+        }).workspaceSnapshots?.[0]?.slashCommandsPending,
+        undefined,
+      );
+      const commandsChanged = ProviderRegistry.mergeProviderSnapshot(withCommands, {
         ...provider,
         slashCommands: updatedCommands,
       });
-      assert.deepStrictEqual(commandsChanged.slashCommands, updatedCommands);
-      assert.deepStrictEqual(
-        commandsChanged.workspaceSnapshots?.map(
-          ({ cwd, slashCommands, slashCommandsPending, modelsPending }) => ({
-            cwd,
-            slashCommands,
-            slashCommandsPending,
-            modelsPending,
-          }),
-        ),
-        [
-          {
-            cwd: "/project",
-            slashCommands: initialCommands,
-            slashCommandsPending: true,
-            modelsPending: undefined,
-          },
-        ],
-      );
-
-      const bothChanged = ProviderRegistry.mergeProviderSnapshot(withWorkspace, {
+      assert.strictEqual(commandsChanged.workspaceSnapshots?.[0]?.slashCommandsPending, true);
+      assert.strictEqual(commandsChanged.workspaceSnapshots?.[0]?.modelsPending, undefined);
+      const bothChanged = ProviderRegistry.mergeProviderSnapshot(withCommands, {
         ...provider,
         models: [machineModel, addedModel],
         slashCommands: updatedCommands,
